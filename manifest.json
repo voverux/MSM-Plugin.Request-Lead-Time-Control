@@ -1,0 +1,29 @@
+﻿{
+    "Name": "MarvalBaltic.Plugins.RequestLeadTimeControl",
+    "Organisation": "Marval Baltic",
+    "DisplayName": "Request Lead Time Control",
+    "Icon": "img/request_lead_time_16.png",
+    "Version": "1.0.0",
+    "SupportedVersions": [
+        "14.7.0",
+        "14.6.1",
+        "14.6.0",
+        "14.5.1",
+        "14.5.0",
+        "14.4.3",
+        "14.4.2",
+        "14.4.1",
+        "14.4.0"
+    ],
+    "Pages": [
+        "Request.aspx"
+    ],
+    "HtmlImportFile": "request_lead_time_control.html",
+    "TagName": "marval-baltic-plugins-request-lead-time-control",
+  "GlobalSettings": [
+    "Plugin Rules Action Message",
+    "MSM WSE Address",
+    "MSM WSE User Name",
+    "MSM WSE Password"
+  ]
+}

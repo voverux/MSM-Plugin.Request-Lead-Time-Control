@@ -1,0 +1,233 @@
+﻿<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+<script src="Template.js"></script>
+<script>
+    (function () {
+
+        var MarvalSoftware = window.top.MarvalSoftware;
+        var $ = window.top.$;
+
+        MarvalSoftware.Plugins.define("marval-baltic-plugins-request-lead-time-control",
+            {
+                _pluginId: "marval-baltic-plugins-request-lead-time-control",
+                _pluginPath: function () { return this.attributes["data-pluginpath"].value; },
+                _pluginHandlerRequest: null,
+                _pluginRules: {
+                    "rules": [
+						{
+						"name": "Rule name",
+						"conditions": [
+							{
+								"type": "reqtype",
+								"value": [1, 2, 6]
+							},
+							{
+								"type": "wfstatus",
+								"value": [1, 2, 6]
+							},
+							{
+								"type": "dict",
+								"id": 2,
+								"value": [100, 105]
+							}
+						],
+						"leadtimedays": 3
+						}
+                    ]
+                },
+
+                _getPluginPath: function () {
+                    return this.attributes["data-pluginpath"].value;
+                },
+
+                init: function () {
+                    this._getActionMessageKey(
+                        this,
+                        this._getActionMessageContent
+                    );
+                },
+
+                _getActionMessageKey: function (plugin, callbackFunction) {
+                    if (plugin._pluginHandlerRequest) {
+                        plugin._pluginHandlerRequest.abort();
+                        plugin._pluginHandlerRequest = null;
+                    }
+                    plugin._pluginHandlerRequest = $.ajax({
+                        type: "GET",
+                        url: plugin._getPluginPath() + "handler/APIHandler.ashx",
+                        contentType: "application/json; charset=utf-8",
+                        dataType: "json",
+                        success: function (result) {
+                            callbackFunction(plugin, result);
+                        }.bind(plugin),
+                        error: function (xhr, ajaxOptions, thrownError) {
+                            if (xhr.status > 0) plugin._showErrorMessage(xhr.status + '\n' + thrownError);
+                        }.bind(plugin)
+                    });
+                },
+
+                _getActionMessageContent: function (plugin, messageKey) {
+                    if (messageKey && messageKey.length > 0) {
+                        if (plugin._pluginHandlerRequest) {
+                            plugin._pluginHandlerRequest.abort();
+                            plugin._pluginHandlerRequest = null;
+                        }
+                        plugin._pluginHandlerRequest = $.ajax({
+                            type: "GET",
+                            url: plugin._getPluginPath() + "handler/APIHandler.ashx?ActionMessageKey=" + messageKey,
+                            contentType: "application/json; charset=utf-8",
+                            dataType: "json",
+                            success: function (result) {
+                                if (result) {
+                                    plugin._pluginRules = JSON.parse(result);
+                                    if (plugin._pluginRules && plugin._pluginRules.rules && plugin._pluginRules.rules.length > 0) {
+                                        plugin._attachEvents();
+                                    }
+                                }
+                            }.bind(plugin),
+                            error: function (xhr, ajaxOptions, thrownError) {
+                                if (xhr.status > 0) plugin._showErrorMessage(xhr.status + '\n' + thrownError);
+                            }.bind(plugin)
+                        });
+                    }
+                },
+
+                _attachEvents: function () {
+                    var elms = $("#ctl00_cph_apply");
+					var elms2 = $("#ctl00_cph_visibleApply");
+                    if (elms.length && elms[0]) {
+						this._attachEvent(elms[0], "click", this);
+                    }
+                },
+
+                _attachEvent: function (elm, event, plugin) {
+                    if (elm) {
+                        if (elm.addEventListener) {
+                            elm.addEventListener(event, function (e) {
+                                if(!plugin._extraEvent())e.preventDefault();
+                            }
+                                , false);
+                        }
+                        else if (elm.attachEvent) {
+                            elm.attachEvent("on" + event, function (e) {
+                                if(!plugin._extraEvent())e.preventDefault();
+                            });
+                        }
+                    }
+                },
+
+                _extraEvent: function () {
+					var form_valid = true;
+					var leadTime = 0;
+                    for (var i = 0; i < this._pluginRules.rules.length; i++) {
+                        var rule = this._pluginRules.rules[i];
+						if(this._isValidInteger(rule.leadtimedays) && rule.leadtimedays>leadTime && this._pluginRulesCheckConditions(rule.conditions)) leadTime=rule.leadtimedays;
+                    }
+					if(leadTime>0) {
+						var elmStartDate = MarvalSoftware.UI.Controls.ScriptManager.getInstance().getControl("ctl00_cph_scheduledStart");
+						if(elmStartDate) {
+							var startDate = elmStartDate.getValue();
+							if(startDate.getTime()<-2177460000000) return true;
+							var validDate = new Date();
+							validDate = validDate.getTime() + leadTime*86400000;
+							if(startDate.getTime()<=validDate){
+								this._displayAlertMessage("Warning!","Change Start shoud be scheduled not earlier than " + leadTime + " days forward!");
+								this._elementEnable('ctl00_cph_visibleApply',0);
+								form_valid = false;
+							}
+						}
+					}
+					return form_valid;
+                },
+				
+                _pluginRulesCheckConditions: function (conditions) {
+                    for (var i = 0; i < conditions.length; i++) {
+                        var condt = conditions[i];
+                        if (!condt || !condt.value) return false;
+                        var fieldValue = null;
+                        switch (condt.type) {
+                            case "reqtype":
+                                fieldValue = this._msmRequestTypeGetValue();
+                                break;
+                            case "param":
+                                fieldValue = this._msmRequestIsNew();
+                                break;
+                            case "wfstatus":
+                                fieldValue = this._msmStatusGetValue();
+                                break;
+                            case "dict":
+                                fieldValue = this._msmDictionaryGetValue(condt.id);
+                                break;
+                            case "attr":
+                                fieldValue = this._msmAttributeGetValue(condt.id);
+                                break;
+                            default:
+                                break;
+                        }
+                        if (fieldValue == null) return false;
+                        if ((condt.value.constructor === Array && condt.value.indexOf(fieldValue) < 0) || (condt.value.constructor !== Array && fieldValue != condt.value)) return false;
+                    }
+                    return true;
+                },
+                _msmRequestTypeGetValue: function () {
+                    return MarvalSoftware.UI.Controls.ScriptManager.getInstance().getControl("__Page")._requestTypeId;
+                },
+                _msmRequestIsNew: function () {
+                    var ctl = MarvalSoftware.UI.Controls.ScriptManager.getInstance().getControl("__Page")._requestId;
+                    if (ctl === 0) return true;
+                    else return false;
+                },
+                _msmStatusGetValue: function () {
+                    var ctl = MarvalSoftware.UI.Controls.ScriptManager.getInstance().getControl("__Page")._workflowStatusPicker;
+                    if (ctl) return ctl.getValue();
+                    return null;
+                },
+                _msmDictionaryGetValue: function (dictId) {
+                    var ctl = MarvalSoftware.UI.Controls.ScriptManager.getInstance().getControl("__Page")._findClassificationPickerByDictionary(dictId);
+                    if (ctl) return ctl.getValue().Identifier;
+                    return null;
+                },
+                _msmAttributeGetValue: function (attrId) {
+                    var attrs = MarvalSoftware.UI.Controls.ScriptManager.getInstance().getControl("__Page")._attributeEnterers;
+                    for (var i = 0; i < attrs.length; i++) {
+                        //if (attrs[i].getTypeId() == attrId) return attrs[i].getAttributeValueSimpleInfo().AttributeValue;
+                        if (attrs[i].getTypeId() == attrId) return attrs[i].getValue();
+                    }
+                    return false;
+                },
+				
+                _isValidInteger: function (val) {
+                    return (typeof val === 'number' && (val % 1) === 0 && val > 0);
+                },
+
+				_elementEnable: function (elementId, parentLevel){
+					$("#"+elementId).removeAttr("disabled");
+				},
+				
+				_displayAlertMessage: function(header, content) {
+					MarvalSoftware.UI.MessageBox.show(
+						header,
+						content,
+						MarvalSoftware.UI.MessageBox.Types.ALERT,
+						[MarvalSoftware.UI.MessageBox.Buttons.OK],
+						MarvalSoftware.UI.MessageBox.Buttons.OK,
+						null,
+						null	
+					);	
+				},
+
+                _showErrorMessage: function (errorMessage){
+                    MarvalSoftware.UI.MessageBox.show(
+                        "Plugin Error",
+                        errorMessage + " [" + this._pluginId + "]",
+                        MarvalSoftware.UI.MessageBox.Types.ERROR,
+                        null,
+                        null,
+                        400
+                    );
+                }
+
+            });
+
+    })();
+
+</script>
